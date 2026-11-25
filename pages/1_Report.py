@@ -9,7 +9,7 @@ import hand_cv as H   # same module the main app uses
 st.set_page_config(page_title="Project Report: Classical Hand Detection", page_icon="📄", layout="wide")
 
 # ---------- EDIT THESE ----------
-TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (264152015)"
+TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Siddharth Das (264152015)"
 INSTITUTE = "Indian Institute of Technology Guwahati"
 PPT_LINK = "https://github.com/sidharthmanoj33/FreiHaNds/blob/main/Classical_Hand_and_Finger_Detection.pptx"
 VIDEO_URL = "https://youtu.be/uEc6RenVgNs"        # project explanation video (placeholder)
