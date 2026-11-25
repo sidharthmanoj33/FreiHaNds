@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 
-st.set_page_config(page_title="Project Report: Hand Pose Detection", page_icon="📄", layout="wide")
+st.set_page_config(page_title="Project Report: Hand Detection (Classical CV)", page_icon="📄", layout="wide")
 
 # ---------- EDIT THESE ----------
 TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (264152015)"
@@ -10,6 +10,12 @@ PPT_LINK = "https://github.com/your-username/your-repo/blob/main/presentation.pp
 VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"        # project explanation video (placeholder)
 SCREEN_REC_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"   # PPT screen recording (placeholder)
 GITHUB_URL = "https://github.com/lmb-freiburg/freihand"
+
+# Add one dict per photo you test. Put the screenshot in assets/ and set "img".
+TESTS = [
+    {"name": "Test 1: two fingers raised (V sign), other fingers folded, plain white background, forearm reaches the image edge",
+     "expected": 2, "v1": 3, "v2": 2, "img": "assets/v_sign_new.png"},
+]
 # --------------------------------
 
 st.markdown("""
@@ -22,9 +28,9 @@ st.markdown("""
 .card b{color:#1f9c7c}
 </style>
 <div class="hero">
-<h1>3D Hand Pose Detection from a Single Photo</h1>
-<p>Project report: an interactive Streamlit application inspired by FreiHAND (Zimmermann et al., ICCV 2019)</p>
-<span class="pill">21 keypoints</span><span class="pill">2D + 3D</span><span class="pill">MediaPipe Hand Landmarker</span><span class="pill">Streamlit</span>
+<h1>Hand Detection with Classical Computer Vision</h1>
+<p>Project report: finding the hand, palm and fingertips in a single photo without any neural network, built with OpenCV and NumPy in a Streamlit application</p>
+<span class="pill">No deep learning</span><span class="pill">YCrCb skin segmentation</span><span class="pill">Mean shift</span><span class="pill">Convex hull + defects</span><span class="pill">Distance transform</span><span class="pill">Streamlit</span>
 <p style="margin-top:14px;font-size:.95rem">Team: """ + TEAM + """ &nbsp;·&nbsp; """ + INSTITUTE + """</p>
 </div>
 """, unsafe_allow_html=True)
@@ -44,241 +50,235 @@ tabs = st.tabs(["1 Introduction", "2 Literature", "3 Methodology", "4 Experiment
 with tabs[0]:
     st.header("1. Introduction")
     st.subheader("Motivation")
-    st.write("Knowing where every finger joint of a hand is in 3D, from just one ordinary photo, lets "
-             "computers understand gestures and hand actions. Learning this needs large amounts of hand images "
-             "with accurate joint labels. Labels are hard to get because fingers hide each other, and the FreiHAND "
-             "paper reports that marking all 21 joints in all camera views takes about 15 minutes per sample.")
+    st.write("Locating a hand and its fingers in an image is the first step of gesture recognition and many human-computer interaction systems. "
+             "Today this is usually done with deep networks that need large labeled datasets such as FreiHAND. "
+             "Before such networks, hands were found with hand-designed image processing steps. These methods need no training data, "
+             "run quickly on a normal CPU and every step can be inspected and explained. We rebuilt our hand detection application using only these classical steps, "
+             "to understand how far they go and where they break.")
     st.subheader("Applications")
     c = st.columns(4)
-    for col, t in zip(c, ["Gesture recognition", "Robotics and teleoperation", "AR / VR hand tracking", "Sign language and HCI"]):
+    for col, t in zip(c, ["Gesture recognition", "Finger counting", "Touch-free interfaces", "Teaching computer vision"]):
         col.markdown(f'<div class="card"><b>{t}</b></div>', unsafe_allow_html=True)
     st.subheader("Problem statement")
-    st.write("Given a single RGB image of a hand, estimate the positions of 21 hand keypoints (wrist plus four joints on each "
-             "of five fingers) in 2D on the image and in 3D, and present them in a simple web application.")
+    st.write("Given one RGB photo that contains a hand, find the hand region, its palm centre and size, the fingertips and the valleys between fingers, "
+             "using only classical computer vision (no CNN or other learned model), and present the result in a simple web application.")
+    st.subheader("What changed from our first version")
+    st.markdown("""
+Our first application used a pretrained MediaPipe Hand Landmarker to predict 21 keypoints in 2D and 3D. The new version replaces it completely:
+
+| | First version | This version |
+|---|---|---|
+| Method | Pretrained neural network | Hand-designed image processing |
+| Output | 21 keypoints, 2D and 3D | Hand outline, palm circle, up to 5 fingertips, finger valleys (2D only) |
+| Training data | Learned model, downloaded on first run | None needed |
+| Dependencies | streamlit, mediapipe, opencv, numpy, matplotlib, pillow | streamlit, opencv-python-headless, numpy, pillow |
+| Controls | Photo or camera | Photo upload only, fixed settings |
+""")
     st.subheader("Contributions")
     st.markdown("""
-- **Studied the FreiHAND paper and toolbox:** a real-image dataset with 3D pose and hand shape labels, built with 8 cameras and a human-in-the-loop labeling loop.
-- **Clarified what the repository does:** it is a dataset and evaluation toolbox and does not include a trained detector.
-- **Built and deployed a working web app:** upload or capture a photo, see colored 2D keypoints, a 3D keypoint plot, a per-joint table and a JSON download.
-- **Used the FreiHAND joint order,** so outputs follow the same convention as the dataset.
-- **Documented deployment problems and fixes** on Streamlit Cloud (Section 4).
+- **Built a complete classical pipeline:** skin-colour segmentation, mean shift, contour, convex hull, convexity defects and distance transform.
+- **Found and fixed two real failure modes** in our first classical version (duplicate fingertips and the forearm), described in Sections 3.6 and 5.
+- **Simplified the web app:** upload a photo, see the mask and the annotated result, read the finger count and download the results as JSON.
+- **Documented what the method cannot do** (Section 5.4), so the results are not over-claimed.
 """)
 
 # ---------------- 2. LITERATURE ----------------
 with tabs[1]:
     st.header("2. Brief Literature Review")
-    st.write("**Synthetic datasets** (RHD, SynthHands, GANerated) are cheap to label but their images and poses differ from real "
-             "ones. **Marker or sensor datasets** (for example FPA with magnetic sensors) give exact labels but change how hands look. "
-             "**Manually labeled datasets** (STB) cover only visible joints and show limited variety. **Multi-view bootstrapping** "
-             "(Simon et al.) triangulates 2D detections from many cameras to produce 3D labels.")
-    st.write("FreiHAND extends this idea: it records 8 synchronized cameras, fits the deformable **MANO** hand model to sparse labels, and "
-             "uses a multi-view network (MVNet) with confidence scores to speed up labeling. The authors show that networks trained "
-             "on a single existing dataset generalize poorly to other datasets, while training on FreiHAND generalizes better on average.")
-    st.write("Our application uses a separate, pretrained, lightweight detector (MediaPipe Hand Landmarker) that predicts 21 "
-             "keypoints from one image. It is not trained on FreiHAND.")
+    st.write("**Skin-colour segmentation.** Skin pixels cluster in a small region of chrominance space. Chai and Ngan showed that a simple box on the Cr and Cb channels of "
+             "YCrCb (Cr 133 to 173, Cb 77 to 127) separates skin from most backgrounds, and Phung et al. compared many skin classifiers. "
+             "Dropping the brightness channel Y makes the rule less sensitive to lighting. Its weakness is that anything skin-coloured is also selected: faces, arms and some wood or walls.")
+    st.write("**Mean shift.** Comaniciu and Meer described mean shift as a way to climb to the densest point of a distribution. "
+             "Applied to a skin mask, a window moved by mean shift settles on the biggest cluster of skin pixels, which is a cheap way to guess where the hand is.")
+    st.write("**Contours, convex hull and convexity defects.** Border following (Suzuki and Abe) turns a binary blob into an outline. "
+             "The convex hull is the smallest convex shape around it. The gaps between the outline and the hull are convexity defects. "
+             "For a spread hand, hull corners far from the palm are fingertips and deep defects are the valleys between fingers.")
+    st.write("**Distance transform.** Borgefors described fast distance transforms. Each pixel of the blob gets its distance to the nearest background pixel. "
+             "The maximum is the centre of the largest inscribed circle, which for a hand is a good estimate of the palm centre and size.")
+    st.write("**Learned alternatives.** FreiHAND (Zimmermann et al., ICCV 2019) and detectors such as MediaPipe predict 21 joints in 3D and cope with occlusion, "
+             "but need training data and a trained model. Our new version is not trained on FreiHAND and does not compete with them on accuracy; it shows what rules alone can do.")
     st.caption("Full references are in Section 7.")
 
 # ---------------- 3. METHODOLOGY ----------------
 with tabs[2]:
     st.header("3. Methodology")
-    st.subheader("3.1 Our application pipeline")
+    st.subheader("3.1 Pipeline")
     st.graphviz_chart("""
     digraph G { rankdir=LR; node [shape=box, style="rounded,filled", fillcolor="#e8efec", fontname="Helvetica"];
-      A [label="Photo upload\\nor camera"]; B [label="Preprocess\\n(fix rotation, RGB)"];
-      C [label="MediaPipe\\nHand Landmarker"]; D [label="21 keypoints\\n(2D + 3D)"];
-      E [label="2D overlay\\n(Pillow)"]; F [label="3D plot\\n(Matplotlib)"]; G [label="Table + JSON\\ndownload"];
-      A -> B -> C -> D; D -> E; D -> F; D -> G; }
+      A [label="Photo upload"]; B [label="Resize to 640 px\\n+ fix rotation"]; C [label="Skin mask\\n(YCrCb + morphology)"];
+      D [label="Skin regions\\n(contours)"]; E [label="Mean shift\\npicks hand region"]; F [label="Wrist cut"];
+      G [label="Distance transform\\n(palm centre, radius)"]; H [label="Convex hull +\\ndefects"]; I [label="Fingertips,\\nvalleys, JSON"];
+      A -> B -> C -> D -> E -> F -> G -> H -> I; }
     """)
-    st.write("The detector returns normalized 2D landmarks (x, y in 0 to 1 of image width and height) and 3D world landmarks in metres, "
-             "relative to the hand's center. To draw on the photo, normalized coordinates are converted to pixels:")
-    st.latex(r"u_k = x_k \cdot W, \qquad v_k = y_k \cdot H")
-    st.write("Joint order (same as FreiHAND): wrist = 0, thumb = 1 to 4, index = 5 to 8, middle = 9 to 12, ring = 13 to 16, pinky = 17 to 20.")
 
-    st.subheader("3.2 How the FreiHAND dataset was created (from the paper)")
-    st.graphviz_chart("""
-    digraph G { rankdir=LR; node [shape=box, style="rounded,filled", fillcolor="#e8efec", fontname="Helvetica"];
-      A [label="8-camera capture\\n(green screen)"]; B [label="Sparse labels:\\n6 keypoints + masks"];
-      C [label="MANO fitting"]; D [label="Heuristic or\\nmanual check"]; E [label="Dataset D_i"];
-      F [label="Train MVNet +\\nHandSegNet"]; A -> B -> C -> D -> E -> F; F -> C [label="repeat (4 times)", fontsize=10]; }
-    """)
-    st.write("MANO is a statistical hand model with 61 parameters: 10 for shape, 45 for finger articulation and 6 for global position and rotation. "
-             "The fitting minimizes a sum of five terms:")
-    st.latex(r"\mathcal{L} = \mathcal{L}_{kp}^{2D} + \mathcal{L}_{kp}^{3D} + \mathcal{L}_{seg} + \mathcal{L}_{shape} + \mathcal{L}_{pose}")
-    st.latex(r"\mathcal{L}_{kp}^{2D} = w_{2D}\sum_i \sum_{k\in V_i} \left\| q_k^i - \Pi^i(\tilde{p}_k) \right\|_2 ,\qquad "
-             r"\mathcal{L}_{kp}^{3D} = w_{3D}\sum_i \sum_{k\in V_i} \left\| p_k - \tilde{p}_k \right\|_2")
-    st.write("Here q are the manually marked 2D points, Π projects a 3D point into camera view i, and p are 3D keypoints predicted by MVNet. "
-             "The segmentation term compares the model's silhouette with the hand mask, and the shape and pose terms keep the hand close to likely shapes and poses.")
-    st.subheader("3.3 MVNet and the confidence score")
-    st.write("MVNet unprojects the features of all 8 views into a common 3D volume and predicts one voxel heatmap per keypoint:")
-    st.latex(r"\mathcal{L}_{MVNet} = \frac{1}{K}\sum_k \left\| S_k - \tilde{S}_k \right\|_2 ,\qquad "
-             r"c = \frac{1}{K}\sum_k \max_{i,j,l} \tilde{S}_k(i,j,l)")
-    st.write("A sample is accepted automatically when the mean confidence is above 0.8, all individual keypoint confidences are at least 0.6, "
-             "the mask overlap is high, and the fit agrees with the predicted keypoints to within 0.5 cm on average.")
-    st.subheader("3.4 Single-image pose formulation")
-    st.latex(r"p_k = s\,\hat{p}_k = s\begin{pmatrix}\hat{x}_k\\ \hat{y}_k\\ \hat{z}_k^{rel}+\hat{z}^{root}\end{pmatrix}")
-    st.write("Because one photo cannot tell the true size, the pose is predicted root-relative and scale-normalized (s is the length of a reference bone). "
-             "This is why the 3D values in our app describe the hand's shape but not its distance from the camera.")
+    st.subheader("3.2 Skin segmentation")
+    st.write("The image is blurred with a 5 by 5 Gaussian filter and converted to YCrCb. A pixel is skin when its Cr and Cb values fall inside fixed ranges; Y (brightness) is ignored:")
+    st.latex(r"Cr = 0.713\,(R - Y) + 128,\quad Cb = 0.564\,(B - Y) + 128,\quad Y = 0.299R + 0.587G + 0.114B")
+    st.latex(r"S(x,y) = \begin{cases}1 & 133 \le Cr \le 173 \ \text{and}\ 77 \le Cb \le 127\\ 0 & \text{otherwise}\end{cases}")
+    st.write("Morphological opening (erosion then dilation, elliptical 5 by 5 kernel) removes small specks, and closing (applied twice) fills small holes. "
+             "The outlines of the connected skin blobs are traced, blobs smaller than 1% of the image are dropped, and the 4 largest are kept.")
+
+    st.subheader("3.3 Choosing the hand region with mean shift")
+    st.write("A window starting at the centre of the image (half the image width and height) is moved to the centroid of the mask values inside it, again and again, until it moves less than 0.5 pixels or 30 steps are done:")
+    st.latex(r"x_{t+1} = \frac{\sum_{p \in W_t} p\,S(p)}{\sum_{p \in W_t} S(p)}")
+    st.write("The skin region that contains (or is closest to) the centre of the final window is taken as the hand. The app no longer asks the user to pick a region.")
+
+    st.subheader("3.4 Palm centre and radius")
+    st.write("The chosen region is filled in and its Euclidean distance transform is computed:")
+    st.latex(r"D(p) = \min_{q \notin \text{hand}} \lVert p - q \rVert_2,\qquad c = \arg\max_p D(p),\quad r = \max_p D(p)")
+    st.write("The point c is the palm centre and r the palm radius. All later thresholds are multiples of r, so they scale with the size of the hand in the photo.")
+
+    st.subheader("3.5 Fingertips and valleys")
+    st.write("The convex hull of the contour is computed. A hull point h is a fingertip candidate if it is far from the palm centre and not on the image border:")
+    st.latex(r"\lVert h - c \rVert_2 \ \ge\ \lambda\, r,\qquad \lambda = 1.6")
+    st.write("Candidates are visited from farthest to nearest and at most 5 are kept. Valleys come from convexity defects: a defect point f is a valley when its depth is large enough:")
+    st.latex(r"\text{depth}(f) > 0.4\,r \quad\text{and}\quad \lVert f - c \rVert_2 > 0.9\,r")
+
+    st.subheader("3.6 Two fixes that made the method reliable")
+    st.write("In our first classical version, a photo of two raised fingers (V sign) was reported as 3 fingers. Two causes were found and fixed.")
+    st.markdown("""
+**Fix 1: duplicate points on one fingertip.** A rounded fingertip has several hull points, and a finger is about as wide as the old spacing rule (0.35 r), so one finger could give two tips.
+A new candidate j is now rejected when it lies on the same fingertip as an already accepted tip i. Two points are on the same fingertip when the contour between them never dips back towards the palm. With d the distance of each contour point to c:
+""")
+    st.latex(r"\max\!\big(\min_{\text{arc}_1} d,\ \min_{\text{arc}_2} d\big) \ >\ 0.8\cdot\min(d_i, d_j)\ \Rightarrow\ \text{same fingertip}")
+    st.write("Between two real fingers the contour drops into the valley, which is much closer to the palm than the tips, so both fingers are kept. Around one tip the contour stays near the tip distance, so the duplicate is dropped.")
+    st.markdown("""
+**Fix 2: the forearm.** Photos usually include the forearm, which runs off the edge of the image. It distorted the hull and produced a false valley on the forearm.
+If the hand contour touches the image border (within max(6 px, 3% of the longer side)), the direction u from the palm centre towards the border points is found, and everything beyond a cut line just below the palm is removed before the hull and the fingertips are computed:
+""")
+    st.latex(r"\text{remove pixels } p \text{ with } (p - c)\cdot u > 1.25\,r")
+
+    st.subheader("3.7 Output")
+    st.write("The app shows the input, the skin mask and the annotated result side by side. Yellow box: mean-shift window; green: hand contour; blue: convex hull; "
+             "red circle: palm; orange: numbered fingertips; pink: valleys between fingers. It also shows the finger count, palm radius, hand area, a fingertip coordinate table and a JSON download.")
 
 # ---------------- 4. EXPERIMENTAL SETUP ----------------
 with tabs[3]:
     st.header("4. Experimental Setup")
-    st.subheader("Baseline algorithms")
-    st.write("In the paper, the same single-view network (Iqbal et al., 2.5D heatmap regression) is trained on each dataset in turn, so training sets are compared fairly. "
-             "For shape, two baselines are used: the constant mean shape, and a MANO fit to the network's predicted keypoints. "
-             "In our application, MediaPipe Hand Landmarker is the detector.")
-    st.subheader("Datasets")
+    st.subheader("Methods compared")
+    st.write("No training is involved, so there are no training datasets or baselines to fit. We compare two versions of the same pipeline: "
+             "**v1** (hull points with a fixed spacing rule, no wrist handling) and **v2** (same-fingertip rule and wrist cut). "
+             "The learned model from our first application (MediaPipe) is discussed only qualitatively, because we did not run both on a common labeled test set.")
+    st.subheader("Fixed parameters")
     st.table({
-        "Dataset": ["STB", "PAN", "FPA", "LSMV", "RHD", "GAN", "HO-3D", "FreiHAND"],
-        "Frames (train / eval)": ["15k / 3k", "641k / 34k", "52k / 53k", "117k / 31k", "41k / 2.7k", "266k / 66k", "11k / -", "33k / 4k"],
-        "Subjects": ["1", ">10", "6", "21", "20", "-", "3", "32"],
-        "Real": ["yes", "yes", "yes", "yes", "no", "no", "yes", "yes"],
-        "Objects": ["no", "yes", "yes", "no", "no", "yes", "yes", "yes"],
-        "Shape labels": ["no", "no", "no", "no", "no", "no", "yes", "yes"],
+        "Parameter": ["Cr range", "Cb range", "Gaussian blur", "Morphology kernel", "Closing iterations", "Min. region size", "Regions kept",
+                      "Mean-shift stop", "Tip distance factor (λ)", "Max. fingertips", "Valley depth", "Same-fingertip ratio", "Wrist cut line", "Input size"],
+        "Value": ["133 to 173", "77 to 127", "5 × 5", "5 (ellipse)", "2", "1% of image", "4", "0.5 px or 30 steps", "1.6 × r", "5", "> 0.4 r",
+                  "0.8", "1.25 r beyond the palm centre", "longest side 640 px"],
     })
-    st.caption("Table from the FreiHAND paper. The repository README lists 32,560 unique training samples and 3,960 evaluation samples.")
+    st.caption("The sliders for these values were removed from the app to keep it simple; they are constants in the code.")
     st.subheader("Implementation platform")
     st.table({
-        "Item": ["Language", "Web framework", "Detector", "Drawing / plots", "Deployment", "Python on server", "Pinned packages"],
-        "Choice": ["Python", "Streamlit", "MediaPipe Hand Landmarker (downloaded model file)", "Pillow, Matplotlib",
-                   "Streamlit Community Cloud from GitHub", "3.14", "streamlit 1.67.0, mediapipe 1.2.3, opencv-python-headless 5.1.0.95, numpy 2.5.5, matplotlib 3.11.2, pillow 13.0.0"],
+        "Item": ["Language", "Web framework", "Image processing", "Arrays", "Image loading", "Deployment", "Packages (requirements.txt)"],
+        "Choice": ["Python", "Streamlit", "OpenCV (opencv-python-headless)", "NumPy", "Pillow (also fixes phone-photo rotation)",
+                   "Streamlit Community Cloud from GitHub", "streamlit, opencv-python-headless, numpy, pillow"],
     })
-    st.subheader("Deployment problems we ran into and how we fixed them")
-    st.write("Getting the app to run on Streamlit Community Cloud took several rounds of debugging. Each time we read the logs under **Manage app** "
-             "to find the real cause. In order, these were our problems:")
+    st.subheader("Problems we ran into and how we fixed them")
     st.markdown("""
-**1. The app ignored our requirements file.**
-The page showed `ModuleNotFoundError: No module named 'cv2'`. The logs showed that only Streamlit itself had been installed. Our dependency file had been saved as
-`requirements (1).txt` (the browser added "(1)" when we downloaded it twice), and Streamlit only reads a file named exactly `requirements.txt`.
-*Fix:* we renamed the file on GitHub.
+**1. Wrong finger count (3 instead of 2).** On a V-sign photo the first version reported 3 fingertips. Reading the annotated result showed that two orange points sat on the same fingertip and that the blue hull ran down the whole forearm.
+*Fix:* the same-fingertip rule and the wrist cut (Section 3.6).
 
-**2. MediaPipe would not install.**
-The build stopped with `Error installing requirements`. The log said MediaPipe 0.10.14 had wheels only for Python 3.9 to 3.12, while Streamlit's server was running Python 3.14.
-*Fix:* we removed the version pin and rewrote the detection code to use MediaPipe's newer Hand Landmarker (Tasks) interface, which downloads its model file on first run. We also draw the keypoints with Pillow instead of OpenCV.
+**2. Our fixes did not appear in the deployed app.** After correcting the code, the live app still showed the old result. The app runs on Streamlit Community Cloud, which only changes when the new files are pushed to GitHub, and Streamlit also keeps imported modules in memory.
+*Fix:* we pushed both `app.py` and `hand_cv.py` to the repository and rebooted the app from **Manage app**. We also added `importlib.reload` in `app.py` so the helper module is re-read on every run.
 
-**3. OpenCV was still needed.**
-After the rewrite, importing MediaPipe failed inside its own drawing code with an `import cv2` error. The newer MediaPipe no longer installs OpenCV itself.
-*Fix:* we added `opencv-python-headless` to `requirements.txt`.
-
-**4. A missing graphics library appeared only when a photo was uploaded.**
-The app loaded, but after uploading an image it showed `libEGL.so.1: cannot open shared object file`. This is a system library, not a Python package.
-*Fix:* we added a `packages.txt` file listing `libgl1`, `libegl1` and `libgles2`.
-
-**5. The app broke again two days later without any change from us.**
-OpenCV failed to load with `libgthread-2.0.so.0: cannot open shared object file`. Our code had not changed, but the server had rebuilt the app and installed newer package versions on a newer Debian base image, which needed one more system library.
-*Fix:* we added `libglib2.0-0t64` to `packages.txt`, and the app worked again.
+**3. Too many controls.** The first classical app had colour sliders, a kernel slider, a fingertip factor slider, a camera input and a dropdown to choose the skin region. These made results depend on user settings.
+*Fix:* we kept one upload button, fixed the settings and let mean shift choose the region.
 """)
-    st.info("**What we learned:** a Streamlit app depends on three things that can all change: our code, the Python packages in `requirements.txt` and the system libraries in `packages.txt`. "
-            "Leaving package versions unpinned lets a rebuild pick up new versions without warning. Pinning exact versions from a working build, and testing the app after every rebuild, "
-            "makes it reproducible.")
+    st.info("**What we learned:** when a result looks wrong, look at the intermediate pictures (mask, hull, points) before changing thresholds. Both bugs were visible in the annotated output. "
+            "Also, after every fix, confirm that the deployed app is really running the new code.")
 
 # ---------------- 5. RESULTS ----------------
 with tabs[4]:
     st.header("5. Results")
-    st.subheader("5.1 Quantitative results from the FreiHAND paper")
-    st.write("Cross-dataset generalization, measured as area under the PCK curve. Rows are training sets; columns are evaluation sets.")
+    st.subheader("5.1 Finger count on our test photo(s)")
+    st.write("We checked the number of fingertips found by each version against the number of fingers actually raised. Only the photos listed here were tested, and the pass/fail "
+             "judgement is by eye. No ground-truth keypoints were used.")
     st.table({
-        "Train \\ Eval": ["STB", "RHD", "GAN", "PAN", "LSMV", "FPA", "HO-3D", "FreiHAND"],
-        "STB": [0.783, 0.362, 0.110, 0.459, 0.086, 0.119, 0.154, 0.473],
-        "RHD": [0.179, 0.767, 0.103, 0.316, 0.209, 0.095, 0.130, 0.518],
-        "GAN": [0.067, 0.184, 0.765, 0.136, 0.152, 0.084, 0.091, 0.217],
-        "PAN": [0.141, 0.463, 0.092, 0.870, 0.189, 0.120, 0.111, 0.562],
-        "LSMV": [0.072, 0.544, 0.206, 0.320, 0.717, 0.118, 0.149, 0.537],
-        "FPA": [0.061, 0.101, 0.180, 0.184, 0.129, 0.777, 0.073, 0.128],
-        "HO-3D": [0.138, 0.450, 0.087, 0.351, 0.251, 0.106, "-", 0.557],
-        "FreiHAND (eval)": [0.138, 0.508, 0.183, 0.407, 0.276, 0.163, 0.169, 0.678],
-        "Avg. rank": [6.0, 2.9, 5.4, 3.0, 4.1, 6.0, 6.1, 2.2],
+        "Test": [t["name"] for t in TESTS],
+        "Raised fingers": [t["expected"] for t in TESTS],
+        "v1 fingertips": [t["v1"] for t in TESTS],
+        "v2 fingertips": [t["v2"] for t in TESTS],
+        "v2 correct": ["yes" if t["v2"] == t["expected"] else "no" for t in TESTS],
     })
-    st.caption("Same layout as Table 1 of the paper. The HO-3D evaluation set was unavailable at submission, so the paper's HO-3D column uses its training split.")
-    st.subheader("Shape estimation on the FreiHAND evaluation split")
-    st.table({"Method": ["Mean shape", "MANO fit to keypoints", "MANO CNN"],
-              "Mesh error (lower is better)": [1.78, 1.45, 1.16],
-              "F@5mm": [0.300, 0.415, 0.484], "F@15mm": [0.808, 0.884, 0.925]})
-    st.subheader("Effect of iterative labeling")
-    st.table({"Iteration": ["D0", "D1", "D2", "D3", "D4"], "Samples": [302, 993, 1449, 2609, 4565],
-              "AUC on RHD": [0.244, 0.453, 0.493, 0.511, 0.518], "AUC on PAN": [0.347, 0.521, 0.521, 0.539, 0.562]})
+    ok = sum(t["v2"] == t["expected"] for t in TESTS)
+    st.success(f"v2 gave the correct count on {ok} of {len(TESTS)} test photo(s). v1 gave the correct count on "
+               f"{sum(t['v1'] == t['expected'] for t in TESTS)} of {len(TESTS)}. This is a very small sample, so it shows that the two fixes work on this case, not a general accuracy.")
 
-    st.subheader("5.2 Our application: quantitative results")
-    st.write("We tested the deployed app with 6 photos of different hand poses. For each, we checked whether a hand was detected and judged by eye "
-             "whether the drawn keypoints follow the fingers. Keypoint accuracy was not measured against ground-truth labels.")
-    st.table({
-        "Test": ["1", "2", "3", "4", "5", "6"],
-        "Pose / condition": ["Two hands, partly cropped at the top of the frame", "Two open palms facing the camera", "One open hand, fingers spread",
-                             "Two fingers raised (V-style gesture)", "Thumbs-up with curled fingers", "Circle gesture with the hand overlapping the face"],
-        "Hands detected": ["2 (Right 98%, Left 96%)", "2", "1", "1", "1", "1"],
-        "Visual check of keypoints": ["Visible parts follow the hands", "Follow all fingers closely", "Follow all fingers closely",
-                                      "Follow the raised fingers", "Follow the thumb and folded fingers", "Plausible, but hard to verify (overlapping fingers)"],
-    })
-    st.success("Detection rate on our test photos: 6 of 6 photos had every visible hand detected. This is a small sample of indoor photos from one person, "
-               "so it should not be read as a general accuracy figure.")
-
-    st.subheader("5.3 Qualitative results")
-    gallery = [
-        ("assets/test2_two_open_palms.jpeg", "Test 2: two open palms detected, with 2D keypoints and 3D plot"),
-        ("assets/test3_open_hand.jpeg", "Test 3: one open hand with spread fingers"),
-        ("assets/test4_two_fingers.jpeg", "Test 4: two raised fingers, others folded"),
-        ("assets/test5_thumbs_up.jpeg", "Test 5: thumbs-up, with curled fingers"),
-    ]
-    for row in (gallery[:2], gallery[2:]):
-        cols = st.columns(2)
-        for col, (p, cap) in zip(cols, row):
-            with col:
-                show_img(p, cap)
-    st.write("Each finger has its own color in the 2D overlay and the 3D plot (thumb red, index orange, middle green, ring blue, pinky purple), and the white dot is the wrist. "
-             "The app also lists each hand's left/right label with a confidence score and offers a JSON download of all keypoints.")
-
-    st.subheader("5.4 Discussion and observations")
-    st.markdown("""
-- In the paper, each dataset scores highest on its own test split and lower on others. FreiHAND has the best average rank (2.2) but does not win every column. Training on FPA transfers worst, because the sensors and wires on the hands change their look.
-- Predicting MANO parameters directly with a CNN beats fitting MANO to predicted keypoints, and the gap is larger at the strict 5 mm threshold.
-- Accuracy rose with every labeling iteration, so the human-in-the-loop cycle improves data quality as it grows.
-- **Our app, open and clear hands (tests 2 and 3):** the 2D keypoints sit on the finger joints and the 3D plot shows a flat, open hand.
-- **Our app, curled fingers (tests 4 and 5):** the keypoints still follow the folded fingers, and the 3D plot shows the bend, so the model handles self-occlusion reasonably in these photos.
-- **Two hands (tests 1 and 2):** both hands were found at once, each with a left/right label and confidence.
-- The 3D plots depend on the model's estimates from one flat photo, so we treat the 2D overlay as the more trustworthy output.
-""")
-    st.subheader("5.5 Failure cases and limitations")
+    st.subheader("5.2 Before and after the fixes (V-sign photo)")
     c1, c2 = st.columns(2)
     with c1:
-        show_img("assets/test1_two_hands_cropped.jpeg", "Test 1: hands cut off by the frame; the two 3D hands overlap in one plot")
+        show_img("assets/v_sign_old.png", "v1: input, skin mask and result. 3 fingertips (two on the same finger) and the hull runs down the forearm")
     with c2:
-        show_img("assets/test6_ok_gesture_near_face.jpeg", "Test 6: fingers overlap each other and the face")
+        show_img("assets/v_sign_new.png", "v2: input, skin mask and result. 2 fingertips and the hull stops at the wrist")
+    st.table({
+        "Measurement on the V-sign photo": ["Fingertips found", "Valleys reported", "Hand area used for analysis (px)", "Palm radius (px)"],
+        "v1": ["3", "3 (one false, on the forearm)", "10711 (hand + forearm)", "30.0"],
+        "v2": ["2", "2", "5854 (hand only)", "30.0"],
+    })
+    st.caption("Measured on the 183 × 275 pixel image after resizing. The two remaining valley points lie at the base of the two raised fingers, one on each side of the gap.")
+
+    st.subheader("5.3 Sensitivity to settings")
+    st.write("We re-ran v2 on the same photo with different image sizes (183, 400 and 640 px), morphology kernels (3, 5, 9), fingertip factors (1.2, 1.6, 2.0) "
+             "and two sets of colour ranges.")
     st.markdown("""
-- **Hands cut off by the frame (test 1):** only the lower parts of the hands are visible, so the finger keypoints are extrapolated beyond the image edge. A hand is still reported, but those points are guesses.
-- **Overlapping 3D hands (test 1):** the 3D plot centers every hand on the same origin, so two hands are drawn on top of each other and are hard to read. Drawing the hands side by side would fix this.
-- **Complex pose with overlap (test 6):** the circle gesture has fingers crossing each other and the face. The overlay looks plausible, but we cannot confirm the position of the hidden joints without ground-truth labels.
-- **Unreliable depth:** the 3D values come from one photo, so they are less accurate than the 2D points.
-- **Not a full hand mesh:** the app outputs a 21-point skeleton, not the MANO surface described in the paper.
-- **Limited testing:** only 6 indoor photos from one person were tested, and we did not test dim light, blur or other skin tones, backgrounds or hands.
+- **With the default colour ranges,** v2 found exactly 2 fingertips for every combination of size, kernel and factor, except kernel size 9 on the smallest (183 px) image, where it found 1. A large kernel on a small image erodes a thin finger.
+- **With a wider Cr range** (120 to 180, alone or together with Cb 70 to 135), the white background was partly counted as skin and the count dropped to 0 or 1. The colour ranges matter much more than the other settings.
 """)
+
+    st.subheader("5.4 Discussion and limitations")
+    st.markdown("""
+- **Skin colour is the weakest link.** Faces, necks, arms, and skin-coloured walls or wood are also selected. The mean-shift choice helps, but a hand next to a face can still be merged with it. The best results are on a plain background.
+- **Lighting and skin tone.** The fixed Cr/Cb box was designed for typical skin tones and normal light. Strong coloured light, very dark or very pale skin may fall outside it. We tested only one photo, so we cannot report how often this happens.
+- **Closed or curled fingers are not counted.** A fingertip is a hull point far from the palm, so folded fingers and a thumb held against the palm are missed. The V-sign result is correct because the two raised fingers are the only ones that stick out.
+- **Wrist cut assumes the arm leaves through the image border.** If the whole arm is visible inside the image, nothing is cut and the arm can disturb the palm estimate.
+- **One hand, 2D only.** The method analyses one region, and gives pixel positions, with no depth, no joint positions and no left/right label. The earlier MediaPipe version gives 21 keypoints in 3D.
+- **Hand-tuned thresholds.** The values in Section 4 were chosen by us and checked on very few photos, so they may need changing for other cameras.
+- **Fast and inspectable.** The method needs no model download and every step can be shown as a picture, which is useful for teaching and for debugging.
+""")
+    st.subheader("5.5 Classical method vs the learned model (qualitative)")
+    st.table({
+        "Aspect": ["Training data", "Output", "Curled fingers", "Cluttered or skin-coloured background", "Depth / 3D", "Setup", "Explainability"],
+        "Classical (this version)": ["None", "Outline, palm, fingertips, valleys", "Not counted", "Can pick up faces and skin-coloured objects", "No", "4 small packages", "Every step visible"],
+        "MediaPipe (first version)": ["Pretrained network", "21 keypoints", "Followed in our test photos", "Hand overlapping a face looked plausible (our test 6)", "Estimated, less reliable", "Larger packages and a model download", "Black box"],
+    })
+    st.caption("The right-hand column repeats what we observed in our first report; the two versions were not benchmarked against each other on a labeled set.")
+
+    st.subheader("5.6 Your own test photos")
+    st.write("Add more photos to the `TESTS` list at the top of this file, with the screenshot in the `assets` folder, and they will appear in the table in 5.1.")
+    gallery = [t for t in TESTS if t["img"] not in ("assets/v_sign_new.png",)]
+    for t in gallery:
+        show_img(t["img"], t["name"])
 
 # ---------------- 6. CONCLUSION ----------------
 with tabs[5]:
     st.header("6. Conclusion")
     st.subheader("Summary")
-    st.write("FreiHAND provides a large real-image dataset with 3D hand pose and shape labels, created with multi-view capture, MANO fitting and a "
-             "human-in-the-loop loop, and shows better cross-dataset generalization than existing datasets. Its repository is a dataset and "
-             "evaluation toolbox, not a detector. We built and deployed a Streamlit application that detects 21 hand keypoints from an uploaded photo, "
-             "shows them in 2D and 3D, and exports them as JSON, using a pretrained MediaPipe model that follows FreiHAND's joint order.")
+    st.write("We replaced our neural-network hand detector with a classical computer vision pipeline: YCrCb skin segmentation, mean shift to pick the hand, "
+             "a distance transform for the palm, and convex hull and convexity defects for fingertips and valleys. Two problems appeared on a V-sign photo, duplicate points on one fingertip and the forearm, "
+             "and both were solved with simple geometric rules (a same-fingertip test and a wrist cut). After the fixes the app reports the correct 2 fingers on that photo and is stable across the image sizes and settings we tried, as long as the colour ranges are not widened. "
+             "The method is fast, needs no training and is easy to explain, but it depends heavily on skin colour and a clean background, does not count folded fingers, and gives only 2D results.")
     st.subheader("Future work")
     st.markdown("""
-- Train or fine-tune a network on FreiHAND and compare it with MediaPipe on the FreiHAND evaluation split.
-- Predict the full MANO hand mesh and render it, as in the paper.
-- Add live webcam and video processing.
-- Measure detection quality on a labeled test set and report standard metrics such as PCK.
+- Test on a larger set of labeled photos and report the fraction of correct finger counts for different poses, lighting and skin tones.
+- Use adaptive skin colour (for example, learn the Cr/Cb range from a detected face or from the hand itself) instead of a fixed box.
+- Count folded fingers by looking at the contour shape of the palm, not only far hull points.
+- Add video input using the previous hand position to start mean shift.
+- Compare directly with the MediaPipe version and with a model trained on FreiHAND on the same test images.
 """)
 
 # ---------------- 7. REFERENCES ----------------
 with tabs[6]:
     st.header("7. References")
     st.markdown(f"""
-1. C. Zimmermann, D. Ceylan, J. Yang, B. Russell, M. Argus, T. Brox. *FreiHAND: A Dataset for Markerless Capture of Hand Pose and Shape from Single RGB Images.* ICCV 2019. Code: [{GITHUB_URL}]({GITHUB_URL})
-2. J. Romero, D. Tzionas, M. J. Black. *Embodied Hands: Modeling and Capturing Hands and Bodies Together.* ACM TOG, 2017.
-3. T. Simon, H. Joo, I. Matthews, Y. Sheikh. *Hand Keypoint Detection in Single Images using Multiview Bootstrapping.* CVPR 2017.
-4. U. Iqbal, P. Molchanov, T. Breuel, J. Gall, J. Kautz. *Hand Pose Estimation via Latent 2.5D Heatmap Regression.* ECCV 2018.
-5. C. Zimmermann, T. Brox. *Learning to Estimate 3D Hand Pose from Single RGB Images.* ICCV 2017.
-6. G. Garcia-Hernando et al. *First-Person Hand Action Benchmark with RGB-D Videos and 3D Hand Pose Annotations.* CVPR 2018.
-7. MediaPipe Hand Landmarker, Google (model used by our application).
-8. Streamlit documentation: https://docs.streamlit.io
+1. D. Chai, K. N. Ngan. *Face segmentation using skin-color map in videophone applications.* IEEE Transactions on Circuits and Systems for Video Technology, 1999.
+2. S. L. Phung, A. Bouzerdoum, D. Chai. *Skin segmentation using color pixel classification: analysis and comparison.* IEEE TPAMI, 2005.
+3. D. Comaniciu, P. Meer. *Mean shift: a robust approach toward feature space analysis.* IEEE TPAMI, 2002.
+4. S. Suzuki, K. Abe. *Topological structural analysis of digitized binary images by border following.* Computer Vision, Graphics, and Image Processing, 1985.
+5. G. Borgefors. *Distance transformations in digital images.* Computer Vision, Graphics, and Image Processing, 1986.
+6. G. Bradski. *The OpenCV Library.* Dr. Dobb's Journal of Software Tools, 2000.
+7. C. Zimmermann, D. Ceylan, J. Yang, B. Russell, M. Argus, T. Brox. *FreiHAND: A Dataset for Markerless Capture of Hand Pose and Shape from Single RGB Images.* ICCV 2019. Code: [{GITHUB_URL}]({GITHUB_URL})
+8. MediaPipe Hand Landmarker, Google (used in our first version of the application).
+9. Streamlit documentation: https://docs.streamlit.io
 """)
 
 # ---------------- 8. PPT ----------------
