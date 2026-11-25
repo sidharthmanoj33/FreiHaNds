@@ -36,33 +36,71 @@ def default_region(regions, win):
     return int(np.argmax(scores))
 
 
+def cut_wrist(cnt, shape):
+    """If the blob runs off the image border (forearm), cut it just below the palm so the arm
+    cannot create fake fingertips or valleys. Returns the (possibly new) contour."""
+    h, w = shape
+    blob = np.zeros(shape, np.uint8)
+    cv2.drawContours(blob, [cnt], -1, 255, -1)
+    pts = cnt[:, 0, :]
+    m_ = max(6, int(0.03 * max(h, w)))                   # tolerance: the arm often stops a few px short of the border
+    edge = (pts[:, 0] <= m_) | (pts[:, 1] <= m_) | (pts[:, 0] >= w - 1 - m_) | (pts[:, 1] >= h - 1 - m_)
+    if edge.sum() < 5:
+        return cnt
+    _, r, _, c = cv2.minMaxLoc(cv2.distanceTransform(blob, cv2.DIST_L2, 5))
+    u = pts[edge].mean(axis=0) - np.array(c)            # direction palm centre -> arm
+    n = np.linalg.norm(u)
+    if n < 1e-6:
+        return cnt
+    u /= n
+    yy, xx = np.mgrid[0:h, 0:w]
+    proj = (xx - c[0]) * u[0] + (yy - c[1]) * u[1]
+    blob[proj > 1.25 * r] = 0                           # wrist cut line
+    cs, _ = cv2.findContours(blob, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    return max(cs, key=cv2.contourArea) if cs else cnt
+
+
+def _same_finger(cnt, i, j, d_cnt, ratio=0.8):
+    """Two hull points are on the same fingertip if the contour between them never dips
+    back towards the palm (no valley in between)."""
+    n = len(cnt)
+    lo, hi = sorted((i, j))
+    arc1 = d_cnt[lo:hi + 1]
+    arc2 = np.concatenate([d_cnt[hi:], d_cnt[:lo + 1]])
+    best = max(arc1.min(), arc2.min())   # the arc without a valley has the higher minimum
+    return best > ratio * min(d_cnt[i], d_cnt[j])
+
+
 def analyze(cnt, shape, tip_factor=1.6):
     """Palm centre (distance transform), convex hull, fingertips (far hull points) and valleys (defects)."""
     h, w = shape
+    cnt = cut_wrist(cnt, shape)
     blob = np.zeros(shape, np.uint8)
     cv2.drawContours(blob, [cnt], -1, 255, -1)
     dt = cv2.distanceTransform(blob, cv2.DIST_L2, 5)
     _, r, _, c = cv2.minMaxLoc(dt)               # r = palm radius, c = palm centre (x, y)
-    hull = cv2.convexHull(cnt)[:, 0, :]
-    d = np.linalg.norm(hull - np.array(c), axis=1)
-    tips = []
-    for i in np.argsort(-d):
-        p = hull[i]
-        if d[i] < tip_factor * r:
+    pts = cnt[:, 0, :]
+    d_cnt = np.linalg.norm(pts - np.array(c), axis=1)
+    hidx = cv2.convexHull(cnt, returnPoints=False)[:, 0]
+    hull = pts[hidx]
+    tips, tip_idx = [], []
+    for k in np.argsort(-d_cnt[hidx]):
+        i, p = int(hidx[k]), pts[hidx[k]]
+        if d_cnt[i] < tip_factor * r:
             break
         if p[0] <= 3 or p[1] <= 3 or p[0] >= w - 4 or p[1] >= h - 4:   # ignore points cut by the image border
             continue
-        if all(np.linalg.norm(p - q) > 0.35 * r for q in tips):
-            tips.append(p)
+        if any(_same_finger(cnt, i, j, d_cnt) for j in tip_idx):      # same fingertip, skip duplicate
+            continue
+        tips.append(p); tip_idx.append(i)
         if len(tips) == 5:
             break
     valleys = []
     try:
-        idx = cv2.convexHull(cnt, returnPoints=False)
-        df = cv2.convexityDefects(cnt, idx)
+        df = cv2.convexityDefects(cnt, hidx.reshape(-1, 1))
         if df is not None:
-            for s, e, f, dep in df.reshape(-1, 4):
-                if dep / 256.0 > 0.4 * r:
+            for s_, e, f, dep in df.reshape(-1, 4):
+                if dep / 256.0 > 0.4 * r and d_cnt[f] > 0.9 * r:       # ignore the cut wrist edge
                     valleys.append(tuple(int(v) for v in cnt[f][0]))
     except cv2.error:
         pass
