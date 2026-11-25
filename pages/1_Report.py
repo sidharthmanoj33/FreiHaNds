@@ -11,7 +11,7 @@ st.set_page_config(page_title="Project Report: Classical Hand Detection", page_i
 # ---------- EDIT THESE ----------
 TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (264152015)"
 INSTITUTE = "Indian Institute of Technology Guwahati"
-PPT_LINK = "https://github.com/your-username/your-repo/blob/main/presentation.pptx"
+PPT_LINK = "https://github.com/sidharthmanoj33/FreiHaNds/blob/main/Classical_Hand_and_Finger_Detection.pptx"
 VIDEO_URL = "https://youtu.be/uEc6RenVgNs"        # project explanation video (placeholder)
 
 APP_URL = "https://freihands-rjzm2bqdjv9hcze5byzcpy.streamlit.app"   # CHECK: copy the exact URL from your browser
@@ -297,7 +297,7 @@ with tabs[7]:
 
 # ---------------- 9. PPT ----------------
 with tabs[8]:
-    st.header("https://github.com/sidharthmanoj33/FreiHaNds/blob/main/Classical_Hand_and_Finger_Detection.pptx")
+    st.header("9. Link to PPT File")
     st.markdown(f"[Open the presentation on GitHub]({PPT_LINK})")
 
 # ---------------- 10. VIDEO ----------------
