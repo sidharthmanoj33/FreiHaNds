@@ -16,14 +16,8 @@ st.title("🖐️ Hand Detection with Classical Computer Vision")
 st.caption("No CNN or deep learning. Pipeline: skin-colour segmentation (YCrCb) → mean shift → contour → convex hull → "
            "convexity defects → distance transform. Built with OpenCV and NumPy only.")
 
-with st.sidebar:
-    st.header("Skin colour thresholds (YCrCb)")
-    cr = st.slider("Cr range", 100, 200, (133, 173))
-    cb = st.slider("Cb range", 60, 160, (77, 127))
-    k = st.slider("Morphology kernel size", 3, 15, 5, 2)
-    tip_factor = st.slider("Fingertip distance factor (x palm radius)", 1.2, 2.5, 1.6, 0.1)
-    st.caption("hand_cv version: " + getattr(H, "VERSION", "OLD - not updated"))
-    st.caption("If the hand is missed, widen the ranges. If the face or background is picked up, narrow them.")
+# Fixed detection settings (no sidebar controls)
+cr, cb, k, tip_factor = (133, 173), (77, 127), 5, 1.6
 
 f = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png", "webp"])
 
@@ -37,7 +31,7 @@ else:
     mask = H.skin_mask(bgr, cr, cb, k)
     regions = H.skin_regions(mask)
     if not regions:
-        st.warning("No skin-coloured region found. Try a clearer photo or widen the thresholds in the sidebar.")
+        st.warning("No skin-coloured region found. Try a clearer photo of a hand on a plain background.")
         st.image(img, use_container_width=True)
     else:
         win = H.mean_shift_window(mask)
