@@ -25,9 +25,7 @@ with st.sidebar:
     st.caption("hand_cv version: " + getattr(H, "VERSION", "OLD - not updated"))
     st.caption("If the hand is missed, widen the ranges. If the face or background is picked up, narrow them.")
 
-src = st.radio("Input", ["Upload a photo", "Use camera"], horizontal=True)
-f = (st.file_uploader("Choose an image", type=["jpg", "jpeg", "png", "webp"])
-     if src == "Upload a photo" else st.camera_input("Take a photo"))
+f = st.file_uploader("Choose an image", type=["jpg", "jpeg", "png", "webp"])
 
 if f is None:
     st.info("Upload a photo of a hand on a plain background for the best result.")
@@ -44,9 +42,7 @@ else:
     else:
         win = H.mean_shift_window(mask)
         auto = H.default_region(regions, win)
-        choice = st.selectbox("Which numbered skin region is the hand? (default chosen by mean shift)",
-                              list(range(1, len(regions) + 1)), index=auto)
-        chosen = choice - 1
+        chosen = auto   # hand region picked automatically by mean shift
         info = H.analyze(regions[chosen], mask.shape, tip_factor)
         out = H.draw(bgr, regions, chosen, info, win)
 
