@@ -12,7 +12,7 @@ st.set_page_config(page_title="Project Report: Classical Hand Detection", page_i
 TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (264152015)"
 INSTITUTE = "Indian Institute of Technology Guwahati"
 PPT_LINK = "https://github.com/your-username/your-repo/blob/main/presentation.pptx"
-VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"        # project explanation video (placeholder)
+VIDEO_URL = "https://youtu.be/uEc6RenVgNs"        # project explanation video (placeholder)
 SCREEN_REC_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"   # PPT screen recording (placeholder)
 APP_URL = "https://freihands-rjzm2bqdjv9hcze5byzcpy.streamlit.app"   # CHECK: copy the exact URL from your browser
 REPO_URL = "https://github.com/your-username/your-repo"             # your GitHub repository
