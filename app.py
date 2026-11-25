@@ -5,7 +5,11 @@ import numpy as np
 import streamlit as st
 from PIL import Image, ImageOps
 
+import importlib
+
 import hand_cv as H
+
+importlib.reload(H)   # always pick up the latest hand_cv.py (Streamlit caches imported modules)
 
 st.set_page_config(page_title="Classical Hand Detection", page_icon="🖐️", layout="wide")
 st.title("🖐️ Hand Detection with Classical Computer Vision")
@@ -18,6 +22,7 @@ with st.sidebar:
     cb = st.slider("Cb range", 60, 160, (77, 127))
     k = st.slider("Morphology kernel size", 3, 15, 5, 2)
     tip_factor = st.slider("Fingertip distance factor (x palm radius)", 1.2, 2.5, 1.6, 0.1)
+    st.caption("hand_cv version: " + getattr(H, "VERSION", "OLD - not updated"))
     st.caption("If the hand is missed, widen the ranges. If the face or background is picked up, narrow them.")
 
 src = st.radio("Input", ["Upload a photo", "Use camera"], horizontal=True)
