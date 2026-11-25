@@ -4,8 +4,8 @@ import streamlit as st
 st.set_page_config(page_title="Project Report: Hand Pose Detection", page_icon="📄", layout="wide")
 
 # ---------- EDIT THESE ----------
-TEAM = "[Team member names / roll numbers]"
-INSTITUTE = "[Institute / Internship name]"
+TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (264152015)"
+INSTITUTE = "Indian Institute of Technology Guwahati"
 PPT_LINK = "https://github.com/your-username/your-repo/blob/main/presentation.pptx"
 VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"        # project explanation video (placeholder)
 SCREEN_REC_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"   # PPT screen recording (placeholder)
@@ -180,35 +180,58 @@ with tabs[4]:
               "AUC on RHD": [0.244, 0.453, 0.493, 0.511, 0.518], "AUC on PAN": [0.347, 0.521, 0.521, 0.539, 0.562]})
 
     st.subheader("5.2 Our application: quantitative results")
-    st.write("Fill this table from your own tests (try at least 10 photos in different conditions) and report the measured detection rate.")
-    st.table({"Test condition": ["Open hand, plain background", "Fist", "Fingers pointing at camera", "Holding an object", "Dim light", "Two hands", "Blurry photo"],
-              "Photos tested": ["[ ]"] * 7, "Hand detected": ["[ ]"] * 7, "Notes": ["[ ]"] * 7})
+    st.write("We tested the deployed app with 6 photos of different hand poses. For each, we checked whether a hand was detected and judged by eye "
+             "whether the drawn keypoints follow the fingers. Keypoint accuracy was not measured against ground-truth labels.")
+    st.table({
+        "Test": ["1", "2", "3", "4", "5", "6"],
+        "Pose / condition": ["Two hands, partly cropped at the top of the frame", "Two open palms facing the camera", "One open hand, fingers spread",
+                             "Two fingers raised (V-style gesture)", "Thumbs-up with curled fingers", "Circle gesture with the hand overlapping the face"],
+        "Hands detected": ["2 (Right 98%, Left 96%)", "2", "1", "1", "1", "1"],
+        "Visual check of keypoints": ["Visible parts follow the hands", "Follow all fingers closely", "Follow all fingers closely",
+                                      "Follow the raised fingers", "Follow the thumb and folded fingers", "Plausible, but hard to verify (overlapping fingers)"],
+    })
+    st.success("Detection rate on our test photos: 6 of 6 photos had every visible hand detected. This is a small sample of indoor photos from one person, "
+               "so it should not be read as a general accuracy figure.")
 
     st.subheader("5.3 Qualitative results")
-    c1, c2 = st.columns(2)
-    with c1:
-        show_img("assets/result_2d.png", "App output: 2D keypoints drawn on the uploaded photo")
-    with c2:
-        show_img("assets/result_3d.png", "App output: 3D keypoint plot")
-    show_img("assets/result_table.png", "App output: joint table and JSON download")
+    gallery = [
+        ("assets/test2_two_open_palms.jpeg", "Test 2: two open palms detected, with 2D keypoints and 3D plot"),
+        ("assets/test3_open_hand.jpeg", "Test 3: one open hand with spread fingers"),
+        ("assets/test4_two_fingers.jpeg", "Test 4: two raised fingers, others folded"),
+        ("assets/test5_thumbs_up.jpeg", "Test 5: thumbs-up, with curled fingers"),
+    ]
+    for row in (gallery[:2], gallery[2:]):
+        cols = st.columns(2)
+        for col, (p, cap) in zip(cols, row):
+            with col:
+                show_img(p, cap)
+    st.write("Each finger has its own color in the 2D overlay and the 3D plot (thumb red, index orange, middle green, ring blue, pinky purple), and the white dot is the wrist. "
+             "The app also lists each hand's left/right label with a confidence score and offers a JSON download of all keypoints.")
 
     st.subheader("5.4 Discussion and observations")
     st.markdown("""
 - In the paper, each dataset scores highest on its own test split and lower on others. FreiHAND has the best average rank (2.2) but does not win every column. Training on FPA transfers worst, because the sensors and wires on the hands change their look.
 - Predicting MANO parameters directly with a CNN beats fitting MANO to predicted keypoints, and the gap is larger at the strict 5 mm threshold.
 - Accuracy rose with every labeling iteration, so the human-in-the-loop cycle improves data quality as it grows.
-- [Add your own observations from using the app: which poses worked well, which did not.]
+- **Our app, open and clear hands (tests 2 and 3):** the 2D keypoints sit on the finger joints and the 3D plot shows a flat, open hand.
+- **Our app, curled fingers (tests 4 and 5):** the keypoints still follow the folded fingers, and the 3D plot shows the bend, so the model handles self-occlusion reasonably in these photos.
+- **Two hands (tests 1 and 2):** both hands were found at once, each with a left/right label and confidence.
+- The 3D plots depend on the model's estimates from one flat photo, so we treat the 2D overlay as the more trustworthy output.
 """)
-    st.subheader("5.5 Failure cases")
+    st.subheader("5.5 Failure cases and limitations")
+    c1, c2 = st.columns(2)
+    with c1:
+        show_img("assets/test1_two_hands_cropped.jpeg", "Test 1: hands cut off by the frame; the two 3D hands overlap in one plot")
+    with c2:
+        show_img("assets/test6_ok_gesture_near_face.jpeg", "Test 6: fingers overlap each other and the face")
     st.markdown("""
-The following are likely failure modes for single-photo hand detection. Confirm each one with your own test photos and add screenshots:
-- **No hand found:** small, blurry, very dark or heavily cropped hands.
-- **Heavy occlusion:** fingers hidden behind each other or behind objects, where joint positions are guessed.
-- **Unreliable depth:** the 3D values come from one flat photo, so they are less accurate than the 2D points.
-- **Wrong left/right label** on unusual poses or mirrored images.
+- **Hands cut off by the frame (test 1):** only the lower parts of the hands are visible, so the finger keypoints are extrapolated beyond the image edge. A hand is still reported, but those points are guesses.
+- **Overlapping 3D hands (test 1):** the 3D plot centers every hand on the same origin, so two hands are drawn on top of each other and are hard to read. Drawing the hands side by side would fix this.
+- **Complex pose with overlap (test 6):** the circle gesture has fingers crossing each other and the face. The overlay looks plausible, but we cannot confirm the position of the hidden joints without ground-truth labels.
+- **Unreliable depth:** the 3D values come from one photo, so they are less accurate than the 2D points.
 - **Not a full hand mesh:** the app outputs a 21-point skeleton, not the MANO surface described in the paper.
+- **Limited testing:** only 6 indoor photos from one person were tested, and we did not test dim light, blur or other skin tones, backgrounds or hands.
 """)
-    show_img("assets/failure_case.png", "Failure case from our testing")
 
 # ---------------- 6. CONCLUSION ----------------
 with tabs[5]:
