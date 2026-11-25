@@ -142,16 +142,34 @@ with tabs[3]:
         "Choice": ["Python", "Streamlit", "MediaPipe Hand Landmarker (downloaded model file)", "Pillow, Matplotlib",
                    "Streamlit Community Cloud from GitHub", "3.14", "streamlit 1.67.0, mediapipe 1.2.3, opencv-python-headless 5.1.0.95, numpy 2.5.5, matplotlib 3.11.2, pillow 13.0.0"],
     })
-    st.subheader("Deployment problems we solved")
+    st.subheader("Deployment problems we ran into and how we fixed them")
+    st.write("Getting the app to run on Streamlit Community Cloud took several rounds of debugging. Each time we read the logs under **Manage app** "
+             "to find the real cause. In order, these were our problems:")
     st.markdown("""
-| Problem | Cause | Fix |
-|---|---|---|
-| App ignored packages | Requirements file named `requirements (1).txt` | Renamed to `requirements.txt` |
-| MediaPipe 0.10.14 would not install | No build for Python 3.14 | Moved to the newer MediaPipe Tasks interface |
-| `libEGL.so.1` missing | Server lacks graphics libraries | Added `packages.txt` with `libgl1`, `libegl1`, `libgles2` |
-| `libgthread-2.0.so.0` missing after 2 days | Rebuild picked up new package versions | Added `libglib2.0-0t64` and pinned package versions |
+**1. The app ignored our requirements file.**
+The page showed `ModuleNotFoundError: No module named 'cv2'`. The logs showed that only Streamlit itself had been installed. Our dependency file had been saved as
+`requirements (1).txt` (the browser added "(1)" when we downloaded it twice), and Streamlit only reads a file named exactly `requirements.txt`.
+*Fix:* we renamed the file on GitHub.
+
+**2. MediaPipe would not install.**
+The build stopped with `Error installing requirements`. The log said MediaPipe 0.10.14 had wheels only for Python 3.9 to 3.12, while Streamlit's server was running Python 3.14.
+*Fix:* we removed the version pin and rewrote the detection code to use MediaPipe's newer Hand Landmarker (Tasks) interface, which downloads its model file on first run. We also draw the keypoints with Pillow instead of OpenCV.
+
+**3. OpenCV was still needed.**
+After the rewrite, importing MediaPipe failed inside its own drawing code with an `import cv2` error. The newer MediaPipe no longer installs OpenCV itself.
+*Fix:* we added `opencv-python-headless` to `requirements.txt`.
+
+**4. A missing graphics library appeared only when a photo was uploaded.**
+The app loaded, but after uploading an image it showed `libEGL.so.1: cannot open shared object file`. This is a system library, not a Python package.
+*Fix:* we added a `packages.txt` file listing `libgl1`, `libegl1` and `libgles2`.
+
+**5. The app broke again two days later without any change from us.**
+OpenCV failed to load with `libgthread-2.0.so.0: cannot open shared object file`. Our code had not changed, but the server had rebuilt the app and installed newer package versions on a newer Debian base image, which needed one more system library.
+*Fix:* we added `libglib2.0-0t64` to `packages.txt`, and the app worked again.
 """)
-    st.write("Lesson: unpinned packages can change between rebuilds, so pinning versions makes the app reproducible.")
+    st.info("**What we learned:** a Streamlit app depends on three things that can all change: our code, the Python packages in `requirements.txt` and the system libraries in `packages.txt`. "
+            "Leaving package versions unpinned lets a rebuild pick up new versions without warning. Pinning exact versions from a working build, and testing the app after every rebuild, "
+            "makes it reproducible.")
 
 # ---------------- 5. RESULTS ----------------
 with tabs[4]:
