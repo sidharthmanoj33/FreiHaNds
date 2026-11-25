@@ -297,7 +297,7 @@ with tabs[7]:
 
 # ---------------- 9. PPT ----------------
 with tabs[8]:
-    st.header("9. Link to PPT File")
+    st.header("https://github.com/sidharthmanoj33/FreiHaNds/blob/main/Classical_Hand_and_Finger_Detection.pptx")
     st.markdown(f"[Open the presentation on GitHub]({PPT_LINK})")
 
 # ---------------- 10. VIDEO ----------------
