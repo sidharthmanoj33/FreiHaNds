@@ -13,7 +13,7 @@ TEAM = "Sidharth Manoj (264152030), Anna Pao (264152003), Sidharth Das (26415201
 INSTITUTE = "Indian Institute of Technology Guwahati"
 PPT_LINK = "https://github.com/your-username/your-repo/blob/main/presentation.pptx"
 VIDEO_URL = "https://youtu.be/uEc6RenVgNs"        # project explanation video (placeholder)
-SCREEN_REC_URL = ""   # PPT screen recording (placeholder)
+
 APP_URL = "https://freihands-rjzm2bqdjv9hcze5byzcpy.streamlit.app"   # CHECK: copy the exact URL from your browser
 REPO_URL = "https://github.com/your-username/your-repo"             # your GitHub repository
 # --------------------------------
@@ -301,10 +301,8 @@ with tabs[8]:
     st.markdown(f"[Open the presentation on GitHub]({PPT_LINK})")
 
 # ---------------- 10. VIDEO ----------------
+# ---------------- 10. VIDEO ----------------
 with tabs[9]:
-    st.header("10. Video Demonstration and PPT Screen Recording")
-    st.subheader("Project demonstration video")
+    st.header("10. Video Demonstration")
     st.video(VIDEO_URL)
-    st.subheader("")
-    st.video(SCREEN_REC_URL)
-    st.caption("Replace the placeholder video links at the top of this file with your own.")
+    st.caption("Replace the placeholder video link at the top of this file with your own.")
